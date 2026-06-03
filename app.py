@@ -1,8 +1,10 @@
 from flask import Flask, render_template, redirect, url_for, session, abort, request, flash
+from config import Config
 import psycopg2
 
 
 app = Flask(__name__, static_url_path='/templates')
+app.config.from_object(Config)
 app.secret_key = "my_secret_key"
 
 # set your own database name, username and password
