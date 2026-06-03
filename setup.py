@@ -79,9 +79,12 @@ def create_db_schema() -> None:
 
     try:
         with connection, connection.cursor() as cursor:
+            cursor.execute("DROP TABLE IF EXISTS relation")
+            cursor.execute("DROP TABLE IF EXISTS example")
+            cursor.execute("DROP TABLE IF EXISTS word")
             cursor.execute(
                 """
-                CREATE TABLE IF NOT EXISTS word (
+                CREATE TABLE word (
                     "Id" SERIAL PRIMARY KEY,
                     "Description" TEXT,
                     "PartOfSpeech" INTEGER,
@@ -92,7 +95,7 @@ def create_db_schema() -> None:
             )
             cursor.execute(
                 """
-                CREATE TABLE IF NOT EXISTS example (
+                CREATE TABLE example (
                     "Id" SERIAL PRIMARY KEY,
                     "WordId" INTEGER NOT NULL REFERENCES word("Id") ON DELETE CASCADE,
                     "Text" TEXT NOT NULL
@@ -101,7 +104,7 @@ def create_db_schema() -> None:
             )
             cursor.execute(
                 """
-                CREATE TABLE IF NOT EXISTS relation (
+                CREATE TABLE relation (
                     "WId1" INTEGER NOT NULL REFERENCES word("Id") ON DELETE CASCADE,
                     "WId2" INTEGER NOT NULL REFERENCES word("Id") ON DELETE CASCADE,
                     "Type" INTEGER NOT NULL,
