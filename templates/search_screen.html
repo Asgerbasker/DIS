@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Search page</title>
+</head>
+<body>
+
+    <div class="search-container">
+        <h1>Search page</h1>
+
+        <form method="POST">
+            <input type="text" name="word" placeholder="Enter word to search" required>
+
+            <button type="submit">Search</button>
+        </form>
+
+        <p>
+            try your luck
+            <a href="{{ url_for('search_screen') }}">Search again</a>
+        </p>
+    </div>
+
+</body>
+</html>

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Create Account</title>
+</head>
+<body>
+
+    <h1>Create Account</h1>
+
+    <!-- Flash messages from Flask -->
+    {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            {% for message in messages %}
+                <p style="color: red;">{{ message }}</p>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <form method="POST">
+
+        <label>Username:</label><br>
+        <input type="text" name="username" required>
+        <br><br>
+
+        <label>Password:</label><br>
+        <input type="password" name="password" required>
+        <br><br>
+
+        <button type="submit">Create Account</button>
+
+    </form>
+
+    <p>
+        Already have an account?
+        <a href="{{ url_for('login') }}">Login here</a>
+    </p>
+
+</body>
+</html>
