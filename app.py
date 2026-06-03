@@ -3,6 +3,7 @@ from config import Config
 from setup import setup_db
 import logging
 import psycopg2
+from docker.errors import APIError, DockerException
 
 
 logging.basicConfig(
@@ -16,8 +17,9 @@ app.secret_key = "my_secret_key"
 app.logger.handlers = logging.getLogger().handlers
 app.logger.setLevel(logging.INFO)
 
+container = None
 with app.app_context():
-    setup_db()
+    container = setup_db()
 
 # set your own database name, username and password
 #db = "dbname='cyper' user='postgres' host='localhost' port='8888' password='password'" #potentially wrong password
@@ -30,6 +32,22 @@ conn = psycopg2.connect(
             password=app.config['POSTGRES_PASSWORD'],
         )
 cursor = conn.cursor()
+
+
+def cleanup_container(container_to_cleanup) -> None:
+    if container_to_cleanup is None:
+        return
+
+    try:
+        container_to_cleanup.reload()
+        if container_to_cleanup.status == "running":
+            container_to_cleanup.stop()
+        container_to_cleanup.remove()
+        app.logger.info("Stopped and removed Postgres container %s", container_to_cleanup.name)
+    except (APIError, DockerException) as exc:
+        app.logger.warning("Could not fully clean up Postgres container: %s", exc)
+    except Exception as exc:
+        app.logger.warning("Could not fully clean up Postgres container: %s", exc)
 
 
 @app.route("/", methods=['POST', 'GET'])
@@ -79,4 +97,13 @@ def search_screen():
     return render_template("search_screen.html")
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    try:
+        app.run(debug=True, use_reloader=False)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        cleanup_container(container)
