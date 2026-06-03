@@ -13,26 +13,41 @@ import random
 app = Flask(__name__, static_url_path='/templates')
 app.secret_key = "my_secret_key"
 
-# set your own database name, username and password
-db = "dbname='cyper' user='postgres' host='localhost' password='123'" #potentially wrong password
-conn = psycopg2.connect(db)
-cursor = conn.cursor()
+def get_db_connection():
+    conn = psycopg2.connect(
+        host="localhost",
+        port=8888,
+        dbname="db",
+        user="postgres",
+        password="123"
+    )
+    return conn
+
+@app.route("/")
+def home():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT NOW();")
+    time = cur.fetchone()
+    conn.close()
+
+    return render_template("home.html", time=time)
 
 
-bcrypt = Bcrypt(app)
 
 
-@app.route("/", methods=['POST', 'GET'])
+@app.route("/createaccount", methods=['POST', 'GET'])
 def createaccount():
+    conn = get_db_connection()
     cur = conn.cursor()
     if request.method == 'POST':
         new_username = request.form['username']
         new_password = request.form['password']
-        cur.execute(f'''select * from users where username = '{new_username}' ''')
+        cur.execute("SELECT * FROM users WHERE username = %s", (new_username,))
         unique = cur.fetchall()
         flash('Account created!')
         if  len(unique) == 0:
-            cur.execute(f'''INSERT INTO users(username, password) VALUES ('{new_username}', '{new_password}')''')
+            cur.execute("INSERT INTO users(username, password) VALUES (%s, %s)", (new_username, new_password))
             flash('Account created!')
             conn.commit()
 
@@ -46,15 +61,16 @@ def createaccount():
 
 @app.route("/login", methods=['POST', 'GET'])
 def login():
+    conn = get_db_connection()
     cur = conn.cursor()
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        cur.execute(f'''select * from users where username = '{username}' and password = '{password}' ''')
+        cur.execute("SELECT * FROM users WHERE username = %s AND password = %s", (username, password))
         user = cur.fetchall()
         if len(user) == 1:
             flash('Logged in successfully!')
-            return redirect(url_for("home"))
+            return redirect(url_for("search_screen"))
         else: 
             flash('Incorrect username or password!')
 
@@ -63,10 +79,29 @@ def login():
 
 @app.route("/search_screen", methods=['POST', 'GET'])
 def search_screen():
+    conn = get_db_connection()
+    cur = conn.cursor()
     if request.method == 'POST':
         word = request.form['word']
         return redirect(url_for("search", word=word))
     return render_template("search_screen.html")
 
+
+
+
+@app.route("/search/<word>")
+def search(word):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM word WHERE word = %s", (word,))
+    result = cur.fetchall()
+    if len(result) == 0:
+        flash('Word not found in the dictionary!')
+        return redirect(url_for("search_screen"))
+    else:
+        definition = result[0][2]
+        return render_template("search.html", word=word, definition=definition)
+    
+    
 if __name__ == "__main__":
     app.run(debug=True)

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Search Result</title>
+</head>
+<body>
+
+    <h1>Search Result</h1>
+
+    <h2>Word:</h2>
+    <p>{{ word }}</p>
+
+    <h2>Definition:</h2>
+    <p>{{ definition }}</p>
+
+    <br>
+
+    <a href="{{ url_for('search_screen') }}">Search again</a>
+    <br>
+    <a href="{{ url_for('home') }}">Home</a>
+
+</body>
+</html>
