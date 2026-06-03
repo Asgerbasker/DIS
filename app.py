@@ -1,42 +1,37 @@
 from flask import Flask, render_template, redirect, url_for, session, abort, request, flash
-import requests
-from bs4 import BeautifulSoup
+from config import Config
+from setup import setup_db
+import logging
 import psycopg2
-from flask_bcrypt import Bcrypt
-from flask_login import LoginManager
-import os
-import glob
-import pandas as pd
-import random
+from docker.errors import APIError, DockerException
 
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)s %(levelname)s %(message)s",
+)
 
 app = Flask(__name__, static_url_path='/templates')
+app.config.from_object(Config)
 app.secret_key = "my_secret_key"
+app.logger.handlers = logging.getLogger().handlers
+app.logger.setLevel(logging.INFO)
 
-def get_db_connection():
-    conn = psycopg2.connect(
-        host="localhost",
-        port=8888,
-        dbname="db",
-        user="postgres",
-        password="123"
-    )
-    return conn
+container = None
+with app.app_context():
+    container = setup_db()
 
-@app.route("/")
-def home():
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT NOW();")
-    time = cur.fetchone()
-    conn.close()
-
-    return render_template("home.html", time=time)
+conn = psycopg2.connect(
+            host="localhost",
+            port=app.config['POSTGRES_PORT'],
+            dbname=app.config['POSTGRES_DB'],
+            user=app.config['POSTGRES_USER'],
+            password=app.config['POSTGRES_PASSWORD'],
+        )
+cursor = conn.cursor()
 
 
-
-
-@app.route("/createaccount", methods=['POST', 'GET'])
+@app.route("/", methods=['POST', 'GET'])
 def createaccount():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -103,5 +98,29 @@ def search(word):
         return render_template("search.html", word=word, definition=definition)
     
     
+def cleanup_container(container_to_cleanup) -> None:
+    if container_to_cleanup is None:
+        return
+
+    try:
+        container_to_cleanup.reload()
+        if container_to_cleanup.status == "running":
+            container_to_cleanup.stop()
+        container_to_cleanup.remove()
+        app.logger.info("Stopped and removed Postgres container %s", container_to_cleanup.name)
+    except (APIError, DockerException) as exc:
+        app.logger.warning("Could not fully clean up Postgres container: %s", exc)
+    except Exception as exc:
+        app.logger.warning("Could not fully clean up Postgres container: %s", exc)
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    try:
+        app.run(debug=True, use_reloader=False)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        cleanup_container(container)
