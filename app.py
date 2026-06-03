@@ -1,15 +1,34 @@
 from flask import Flask, render_template, redirect, url_for, session, abort, request, flash
 from config import Config
+from setup import setup_db
+import logging
 import psycopg2
 
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)s %(levelname)s %(message)s",
+)
 
 app = Flask(__name__, static_url_path='/templates')
 app.config.from_object(Config)
 app.secret_key = "my_secret_key"
+app.logger.handlers = logging.getLogger().handlers
+app.logger.setLevel(logging.INFO)
+
+with app.app_context():
+    setup_db()
 
 # set your own database name, username and password
-db = "dbname='cyper' user='postgres' host='localhost' port='8888' password='password'" #potentially wrong password
-conn = psycopg2.connect(db)
+#db = "dbname='cyper' user='postgres' host='localhost' port='8888' password='password'" #potentially wrong password
+#conn = psycopg2.connect(db)
+conn = psycopg2.connect(
+            host="localhost",
+            port=app.config['POSTGRES_PORT'],
+            dbname=app.config['POSTGRES_DB'],
+            user=app.config['POSTGRES_USER'],
+            password=app.config['POSTGRES_PASSWORD'],
+        )
 cursor = conn.cursor()
 
 
