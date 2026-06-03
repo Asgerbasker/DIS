@@ -1,25 +1,14 @@
 from flask import Flask, render_template, redirect, url_for, session, abort, request, flash
-import requests
-from bs4 import BeautifulSoup
 import psycopg2
-from flask_bcrypt import Bcrypt
-from flask_login import LoginManager
-import os
-import glob
-import pandas as pd
-import random
 
 
 app = Flask(__name__, static_url_path='/templates')
 app.secret_key = "my_secret_key"
 
 # set your own database name, username and password
-db = "dbname='cyper' user='postgres' host='localhost' password='123'" #potentially wrong password
+db = "dbname='cyper' user='postgres' host='localhost' port='8888' password='password'" #potentially wrong password
 conn = psycopg2.connect(db)
 cursor = conn.cursor()
-
-
-bcrypt = Bcrypt(app)
 
 
 @app.route("/", methods=['POST', 'GET'])
