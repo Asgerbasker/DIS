@@ -6,10 +6,11 @@ pip install -r requirements.txt
 ```
 3. Run `python app.py` while Docker is running. 
     - This will automatically set up a postgres container as well as the databse schema and the corresponding data. This however makes the startup time quite long (2-3 minutes).
+4. Go to `localhost:5000/` and you will be prompted to login.
+    - Choose "create one" in the bottom of the card and create a new user.
+    - Now you can login with your new user and use the dictionary!
 
-To use the search feature, go to `localhost:5000/search_screen` and type in a word!
-
-Exmaples of searches with examples and synonyms/antonyms:
+Examples of searches with examples and synonyms/antonyms:
 - "extinguish"
 - "establish"
 - "predecessor"

@@ -1,4 +1,5 @@
 from flask import Flask, render_template, redirect, url_for, session, abort, request, flash
+from flask_login import LoginManager, login_user, login_required
 from config import Config
 from entities import *
 from setup import setup_db
@@ -32,8 +33,17 @@ conn = psycopg2.connect(
             password=app.config['POSTGRES_PASSWORD'],
         )
 
+login_manager = LoginManager()
+login_manager.login_view = 'login'
+login_manager.init_app(app)
+
+@login_manager.user_loader
+def get_user(id):
+    return User.get_by_id(id, conn)
+
 
 @app.route("/", methods=['POST', 'GET'])
+@login_required
 def search_screen():
     if request.method == 'POST':
         query = request.form.get('query', '').strip()
@@ -48,18 +58,16 @@ def search_screen():
 @app.route("/signup", methods=['POST', 'GET'])
 def createaccount():
     if request.method == "POST":
-        username,password = (request.form["username"], request.form["password"])
-        with conn, conn.cursor() as cur:
-            cur.execute('SELECT 1 FROM users WHERE "Username" = %s', (username,))
-            unique = cur.fetchall()
-            if len(unique) == 0:
-                pw_hash = generate_password_hash(password)
-                cur.execute(
-                    'INSERT INTO users ("Username", "PasswordHash") VALUES (%s,%s)',
-                    (username,pw_hash)
-                )
-                flash("Account created!")
-                return redirect(url_for("search_screen"))
+        new_user = User(
+            username=request.form["username"],
+            password_hash=generate_password_hash(request.form["password"]))
+        existing_user = User.get_by_username(new_user.username, conn)
+
+        if existing_user is None:
+            new_user.save(conn)
+            flash("Account created!")
+            return redirect(url_for("search_screen"))
+        else:
             flash("User already exists!")
     return render_template("createaccount.html")
 
@@ -70,13 +78,12 @@ def login():
         return render_template("login.html")
     
     username,password = (request.form["username"],request.form["password"])
-    with conn, conn.cursor() as cur:
-        cur.execute('SELECT "PasswordHash" FROM users WHERE "Username" = %s', (username,))
-        user = cur.fetchall()
-        if len(user) == 1 and check_password_hash(user[0][0], password):
-            flash('Logged in successfully!')
-            return redirect(url_for("search_screen"))
-    
+    user = User.get_by_username(username, conn)
+    if user is not None and check_password_hash(user.password_hash, password):
+        login_user(user)
+        flash('Logged in successfully!')
+        return redirect(url_for("search_screen"))
+
     flash('Incorrect username or password!')
     return render_template("login.html")
 
