@@ -32,9 +32,9 @@ class Word:
         with db_connection, db_connection.cursor() as cur:
             cur.execute(
                 """
-                SELECT "Id", "Description", "PartOfSpeech", "Stemmed", "RawForm" FROM word
-                WHERE "Stemmed" = %s
-                ORDER BY "RawForm"
+                SELECT Id, Description, PartOfSpeech, Stemmed, RawForm FROM word
+                WHERE Stemmed = %s
+                ORDER BY RawForm
                 """, (normalized,))
             word_rows = cur.fetchall()
 
@@ -58,7 +58,7 @@ class Word:
 
     @staticmethod
     def __get_raw_form(wordid: int, cursor) -> Optional[str]:
-        cursor.execute('SELECT "RawForm" from word WHERE "Id" = %s', (wordid,))
+        cursor.execute('SELECT RawForm from word WHERE Id = %s', (wordid,))
         row = cursor.fetchone()
         if not row:
             return None
@@ -68,11 +68,11 @@ class Word:
     def __find_relations(wordid : int, cursor) -> list["WordRelation"]:
         cursor.execute(
             """
-            SELECT r."WId1", r."WId2", r."Type"
+            SELECT r.WId1, r.WId2, r.Type
             FROM relation r
-            JOIN word w2 ON w2."Id" = r."WId2"
-            WHERE r."WId1" = %s
-            ORDER BY w2."RawForm"
+            JOIN word w2 ON w2.Id = r.WId2
+            WHERE r.WId1 = %s
+            ORDER BY w2.RawForm
             """, (wordid,))
         relation_rows = cursor.fetchall()
         return [WordRelation(*row) for row in relation_rows]
@@ -81,10 +81,10 @@ class Word:
     def __find_examples(wordid: int, cursor) -> list["Example"]:
         cursor.execute(
             """
-            SELECT e."Id", e."WordId", e."Text"
+            SELECT e.Id, e.WordId, e.Text
             FROM example e
-            JOIN word w ON w."Id" = e."WordId"
-            WHERE w."Id" = %s
+            JOIN word w ON w.Id = e.WordId
+            WHERE w.Id = %s
             """, (wordid,))
         example_rows = cursor.fetchall()
         return [Example(*row) for row in example_rows]

@@ -1,3 +1,4 @@
+import argparse
 from flask import Flask, render_template, redirect, url_for, session, abort, request, flash
 from flask_login import LoginManager, login_user, login_required
 from config import Config
@@ -15,26 +16,17 @@ logging.basicConfig(
     format="%(asctime)s %(name)s %(levelname)s %(message)s",
 )
 
+container = None
+conn = None
+
 app = Flask(__name__, static_url_path='/templates')
 app.config.from_object(Config)
-app.secret_key = "my_secret_key"
+app.secret_key = "Databases and Information Systems 2026 :))"
 app.logger.handlers = logging.getLogger().handlers
 app.logger.setLevel(logging.INFO)
-
-container = None
-with app.app_context():
-    container = setup_db()
-
-conn = psycopg2.connect(
-            host="localhost",
-            port=app.config['POSTGRES_PORT'],
-            dbname=app.config['POSTGRES_DB'],
-            user=app.config['POSTGRES_USER'],
-            password=app.config['POSTGRES_PASSWORD'],
-        )
-
 login_manager = LoginManager()
 login_manager.login_view = 'login'
+login_manager.login_message_category = "primary"
 login_manager.init_app(app)
 
 @login_manager.user_loader
@@ -65,10 +57,10 @@ def createaccount():
 
         if existing_user is None:
             new_user.save(conn)
-            flash("Account created!")
-            return redirect(url_for("search_screen"))
+            flash("Account created!", "success")
+            return redirect(url_for("login"))
         else:
-            flash("User already exists!")
+            flash("User already exists!", "danger")
     return render_template("createaccount.html")
 
 
@@ -81,10 +73,10 @@ def login():
     user = User.get_by_username(username, conn)
     if user is not None and check_password_hash(user.password_hash, password):
         login_user(user)
-        flash('Logged in successfully!')
+        flash('Logged in successfully!', "success")
         return redirect(url_for("search_screen"))
 
-    flash('Incorrect username or password!')
+    flash('Incorrect username or password!', "danger")
     return render_template("login.html")
 
 def _search_words(query: str) -> list[dict]:
@@ -120,16 +112,41 @@ def __cleanup_container(container_to_cleanup) -> None:
         container_to_cleanup.reload()
         if container_to_cleanup.status == "running":
             container_to_cleanup.stop()
-        container_to_cleanup.remove()
-        app.logger.info("Stopped and removed Postgres container %s", container_to_cleanup.name)
+        app.logger.info("Stopped Postgres container %s", container_to_cleanup.name)
     except (APIError, DockerException) as exc:
         app.logger.warning("Could not fully clean up Postgres container: %s", exc)
     except Exception as exc:
         app.logger.warning("Could not fully clean up Postgres container: %s", exc)
 
+def __initialize(reset_db: bool) -> None:
+    global container, conn
+
+    with app.app_context():
+        container = setup_db(reset_db=reset_db)
+
+    conn = psycopg2.connect(
+        host="localhost",
+        port=app.config['POSTGRES_PORT'],
+        dbname=app.config['POSTGRES_DB'],
+        user=app.config['POSTGRES_USER'],
+        password=app.config['POSTGRES_PASSWORD'],
+    )
+
+def __parse_args():
+    parser = argparse.ArgumentParser(description="Run the Wordnet search app")
+    parser.add_argument(
+        "--reset-db",
+        action="store_true",
+        help="Rebuild the database container and reload the seed data from scratch.",
+    )
+    return parser.parse_args()
+
 if __name__ == "__main__":
+    args = __parse_args()
     try:
+        __initialize(args.reset_db)
         app.run(debug=True, use_reloader=False)
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
         __cleanup_container(container)
