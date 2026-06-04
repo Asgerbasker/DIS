@@ -1,10 +1,12 @@
 from flask import Flask, render_template, redirect, url_for, session, abort, request, flash
 from config import Config
+from entities import *
 from setup import setup_db
 import logging
 import psycopg2
 from docker.errors import APIError, DockerException
-
+import itertools
+import operator
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,8 +30,6 @@ conn = psycopg2.connect(
             user=app.config['POSTGRES_USER'],
             password=app.config['POSTGRES_PASSWORD'],
         )
-cursor = conn.cursor()
-
 
 @app.route("/", methods=['POST', 'GET'])
 def createaccount():
@@ -73,13 +73,41 @@ def login():
 @app.route("/search_screen", methods=['POST', 'GET'])
 def search_screen():
     if request.method == 'POST':
-        word = request.form['word']
-        return redirect(url_for("search", word=word))
-    return render_template("search_screen.html")
+        query = request.form.get('query', '').strip()
+        if query:
+            return redirect(url_for("search_screen", query=query))
+        return redirect(url_for("search_screen"))
+
+    query = request.args.get('query', '').strip()
+    results = _search_words(query) if query else []
+    return render_template("search_screen.html", query=query, results=results, result_count=len(results))
+
+def _search_words(query: str) -> list[dict]:
+    words = Word.search_words(query, conn)
+    return [
+        {
+            "raw_form": word.raw_form,
+            "description": word.description,
+            "examples": word.examples,
+            "part_of_speech": word.part_of_speech.name,
+            **__get_related_words(word.id),
+        } for word in words]
 
 
+def __get_related_words(wordid: int) -> dict[str, list[str]]:
+    related_words = Word.get_related_words(wordid, conn)
+    grouped = itertools.groupby(related_words, operator.itemgetter(1))
+    related = {
+        ("synonyms" if relation == int(RelationType.SYNONYM) else "antonyms"): [word for word,_ in value]
+        for relation,value in grouped
+    }
+    if not "synonyms" in related:
+        related["synonyms"] = []
+    if not "antonyms" in related:
+        related["antonyms"] = []
+    return related
 
-def cleanup_container(container_to_cleanup) -> None:
+def __cleanup_container(container_to_cleanup) -> None:
     if container_to_cleanup is None:
         return
 
@@ -97,11 +125,6 @@ def cleanup_container(container_to_cleanup) -> None:
 if __name__ == "__main__":
     try:
         app.run(debug=True, use_reloader=False)
-    except KeyboardInterrupt:
-        pass
     finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-        cleanup_container(container)
+        conn.close()
+        __cleanup_container(container)

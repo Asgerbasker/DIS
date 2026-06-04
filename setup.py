@@ -4,15 +4,14 @@ from flask import current_app
 from typing import Any, Tuple
 import docker
 import logging
-import tempfile
 import psycopg2
 from entities import *
 import pandas as pd
-import json
 from tqdm import tqdm
-
+from util import normalize
 
 logger = logging.getLogger(__name__)
+
 
 def setup_db() -> Container:
     container = start_postgres_container()
@@ -132,11 +131,12 @@ def load_kaggle_data() -> Tuple[list[Word], list[WordRelation]]:
             examples.append(Example(example_id, word_id, ex))
             example_id += 1
 
+        normalized_word = normalize(row["Word"])
         words.append(Word(
             word_id,
             row["Definition"],
             row["POS"],
-            row["Word"].upper(),
+            normalized_word,
             row["Word"],
             examples,
             [],
