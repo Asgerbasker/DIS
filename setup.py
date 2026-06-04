@@ -78,9 +78,19 @@ def create_db_schema() -> None:
 
     try:
         with connection, connection.cursor() as cursor:
+            cursor.execute("DROP TABLE IF EXISTS users")
             cursor.execute("DROP TABLE IF EXISTS relation")
             cursor.execute("DROP TABLE IF EXISTS example")
             cursor.execute("DROP TABLE IF EXISTS word")
+            cursor.execute(
+                """
+                CREATE TABLE users (
+                    "Id" SERIAL PRIMARY KEY,
+                    "Username" TEXT NOT NULL UNIQUE,
+                    "PasswordHash" TEXT NOT NULL
+                )
+                """
+            )
             cursor.execute(
                 """
                 CREATE TABLE word (

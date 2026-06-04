@@ -7,6 +7,7 @@ import psycopg2
 from docker.errors import APIError, DockerException
 import itertools
 import operator
+from werkzeug.security import check_password_hash, generate_password_hash
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,46 +32,8 @@ conn = psycopg2.connect(
             password=app.config['POSTGRES_PASSWORD'],
         )
 
+
 @app.route("/", methods=['POST', 'GET'])
-def createaccount():
-    cur = conn.cursor()
-    if request.method == 'POST':
-        new_username = request.form['username']
-        new_password = request.form['password']
-        cur.execute(f'''select * from users where username = '{new_username}' ''')
-        unique = cur.fetchall()
-        flash('Account created!')
-        if  len(unique) == 0:
-            cur.execute(f'''INSERT INTO users(username, password) VALUES ('{new_username}', '{new_password}')''')
-            flash('Account created!')
-            conn.commit()
-
-            return redirect(url_for("home"))
-        else: 
-            flash('Username already exists!')
-
-
-    return render_template("createaccount.html")
-
-
-@app.route("/login", methods=['POST', 'GET'])
-def login():
-    cur = conn.cursor()
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        cur.execute(f'''select * from users where username = '{username}' and password = '{password}' ''')
-        user = cur.fetchall()
-        if len(user) == 1:
-            flash('Logged in successfully!')
-            return redirect(url_for("home"))
-        else: 
-            flash('Incorrect username or password!')
-
-    return render_template("login.html")
-
-
-@app.route("/search_screen", methods=['POST', 'GET'])
 def search_screen():
     if request.method == 'POST':
         query = request.form.get('query', '').strip()
@@ -82,13 +45,48 @@ def search_screen():
     results = _search_words(query) if query else []
     return render_template("search_screen.html", query=query, results=results, result_count=len(results))
 
+@app.route("/signup", methods=['POST', 'GET'])
+def createaccount():
+    if request.method == "POST":
+        username,password = (request.form["username"], request.form["password"])
+        with conn, conn.cursor() as cur:
+            cur.execute('SELECT 1 FROM users WHERE "Username" = %s', (username,))
+            unique = cur.fetchall()
+            if len(unique) == 0:
+                pw_hash = generate_password_hash(password)
+                cur.execute(
+                    'INSERT INTO users ("Username", "PasswordHash") VALUES (%s,%s)',
+                    (username,pw_hash)
+                )
+                flash("Account created!")
+                return redirect(url_for("search_screen"))
+            flash("User already exists!")
+    return render_template("createaccount.html")
+
+
+@app.route("/login", methods=['POST', 'GET'])
+def login():
+    if request.method != "POST":
+        return render_template("login.html")
+    
+    username,password = (request.form["username"],request.form["password"])
+    with conn, conn.cursor() as cur:
+        cur.execute('SELECT "PasswordHash" FROM users WHERE "Username" = %s', (username,))
+        user = cur.fetchall()
+        if len(user) == 1 and check_password_hash(user[0][0], password):
+            flash('Logged in successfully!')
+            return redirect(url_for("search_screen"))
+    
+    flash('Incorrect username or password!')
+    return render_template("login.html")
+
 def _search_words(query: str) -> list[dict]:
     words = Word.search_words(query, conn)
     return [
         {
             "raw_form": word.raw_form,
             "description": word.description,
-            "examples": word.examples,
+            "examples": [ex.text for ex in word.examples],
             "part_of_speech": word.part_of_speech.name,
             **__get_related_words(word.id),
         } for word in words]
