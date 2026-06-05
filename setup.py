@@ -4,22 +4,54 @@ from flask import current_app
 from typing import Any, Tuple
 import docker
 import logging
-import tempfile
 import psycopg2
 from entities import *
 import pandas as pd
-import json
 from tqdm import tqdm
-
+from util import normalize
 
 logger = logging.getLogger(__name__)
+_REQUIRED_TABLES = ("users", "word", "example", "relation")
 
-def setup_db() -> Container:
+
+def setup_db(reset_db: bool = False) -> Container:
     container = start_postgres_container()
+
+    if not reset_db and __database_is_valid():
+        logger.info("Database already initialized; skipping schema and seed data setup")
+        return container
+
     create_db_schema()
     data = load_kaggle_data()
     insert_data_into_db(data)
     return container
+
+
+def __database_is_valid() -> bool:
+    config = current_app.config
+    connection = psycopg2.connect(
+        host="localhost",
+        port=config["POSTGRES_PORT"],
+        dbname=config["POSTGRES_DB"],
+        user=config["POSTGRES_USER"],
+        password=config["POSTGRES_PASSWORD"],
+    )
+
+    try:
+        with connection, connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                  AND table_name = ANY(%s)
+                """,
+                (list(_REQUIRED_TABLES),),
+            )
+            existing_tables = {row[0] for row in cursor.fetchall()}
+            return len(existing_tables) == len(_REQUIRED_TABLES)
+    finally:
+        connection.close()
 
 
 def start_postgres_container() -> Container:
@@ -60,7 +92,7 @@ def start_postgres_container() -> Container:
             },
             ports={"5432/tcp": ("127.0.0.1", config["POSTGRES_PORT"])},
         )
-        logger.info("Started new container %s from image postgres:16", container.short_id)
+        logger.info("Started new container %s (id=%s) from image postgres:16", container_name, container.short_id)
         return container
     except (APIError, DockerException) as exc:
         raise RuntimeError(f"Failed to start container {container_name}") from exc
@@ -79,36 +111,46 @@ def create_db_schema() -> None:
 
     try:
         with connection, connection.cursor() as cursor:
+            cursor.execute("DROP TABLE IF EXISTS users")
             cursor.execute("DROP TABLE IF EXISTS relation")
             cursor.execute("DROP TABLE IF EXISTS example")
             cursor.execute("DROP TABLE IF EXISTS word")
             cursor.execute(
                 """
+                CREATE TABLE users (
+                    Id SERIAL PRIMARY KEY,
+                    Username TEXT NOT NULL UNIQUE,
+                    PasswordHash TEXT NOT NULL
+                )
+                """
+            )
+            cursor.execute(
+                """
                 CREATE TABLE word (
-                    "Id" SERIAL PRIMARY KEY,
-                    "Description" TEXT,
-                    "PartOfSpeech" INTEGER,
-                    "Stemmed" TEXT,
-                    "RawForm" TEXT
+                    Id SERIAL PRIMARY KEY,
+                    Description TEXT,
+                    PartOfSpeech INTEGER,
+                    Stemmed TEXT,
+                    RawForm TEXT
                 )
                 """
             )
             cursor.execute(
                 """
                 CREATE TABLE example (
-                    "Id" SERIAL PRIMARY KEY,
-                    "WordId" INTEGER NOT NULL REFERENCES word("Id") ON DELETE CASCADE,
-                    "Text" TEXT NOT NULL
+                    Id SERIAL PRIMARY KEY,
+                    WordId INTEGER NOT NULL REFERENCES word(Id) ON DELETE CASCADE,
+                    Text TEXT NOT NULL
                 )
                 """
             )
             cursor.execute(
                 """
                 CREATE TABLE relation (
-                    "WId1" INTEGER NOT NULL REFERENCES word("Id") ON DELETE CASCADE,
-                    "WId2" INTEGER NOT NULL REFERENCES word("Id") ON DELETE CASCADE,
-                    "Type" INTEGER NOT NULL,
-                    PRIMARY KEY ("WId1", "WId2", "Type")
+                    WId1 INTEGER NOT NULL REFERENCES word(Id) ON DELETE CASCADE,
+                    WId2 INTEGER NOT NULL REFERENCES word(Id) ON DELETE CASCADE,
+                    Type INTEGER NOT NULL,
+                    PRIMARY KEY (WId1, WId2, Type)
                 )
                 """
             )
@@ -132,11 +174,12 @@ def load_kaggle_data() -> Tuple[list[Word], list[WordRelation]]:
             examples.append(Example(example_id, word_id, ex))
             example_id += 1
 
+        normalized_word = normalize(row["Word"])
         words.append(Word(
             word_id,
             row["Definition"],
             row["POS"],
-            row["Word"].upper(),
+            normalized_word,
             row["Word"],
             examples,
             [],
@@ -163,7 +206,7 @@ def insert_data_into_db(data: Tuple[list[Word], list[WordRelation]]) -> None:
                 for word in tqdm(words, desc="Inserting words", total=len(words)):
                     cursor.execute(
                         """
-                        INSERT INTO word ("Id", "Description", "PartOfSpeech", "Stemmed", "RawForm")
+                        INSERT INTO word (Id, Description, PartOfSpeech, Stemmed, RawForm)
                         VALUES (%s, %s, %s, %s, %s)
                         """,
                         (word.id, word.description, word.part_of_speech, word.stemmed, word.raw_form),
@@ -172,7 +215,7 @@ def insert_data_into_db(data: Tuple[list[Word], list[WordRelation]]) -> None:
                     for example in word.examples:
                         cursor.execute(
                             """
-                            INSERT INTO example ("Id", "WordId", "Text")
+                            INSERT INTO example (Id, WordId, Text)
                             VALUES (%s, %s, %s)
                             """,
                             (example.id, example.word_id, example.text),
@@ -192,16 +235,16 @@ def __insert_relations(connection: psycopg2.extensions.connection, relations: li
 
     with connection:
         with connection.cursor() as cursor:
+            logger.info(f"Inserting {len(relations)} relations...")
             cursor.executemany(
                 """
-                INSERT INTO relation ("WId1", "WId2", "Type")
+                INSERT INTO relation (WId1, WId2, Type)
                 VALUES (%s, %s, %s)
-                ON CONFLICT DO NOTHING
                 """,
                 [
                     (relation.word_id_1, relation.word_id_2, int(relation.relation_type))
                     for relation in relations
-                ],
+                ]
             )
 
 def __load_adjectives() -> list[Word]:
@@ -257,6 +300,7 @@ def __load_relations(word_id_map: dict[str, int]) -> list[WordRelation]:
         ).rename(columns={'Synonyms': 'RelatedWords'})
     syn_df["Type"] = "Synonym"
     logger.info("Loaded %d synonyms", len(syn_df))
+
     ant_df = pd.read_csv("dataset/WordnetAntonyms.csv"
         ).dropna(subset=["Word"]
         ).drop(columns=["Count"]
@@ -266,8 +310,10 @@ def __load_relations(word_id_map: dict[str, int]) -> list[WordRelation]:
         ).rename(columns={'Antonyms': 'RelatedWords'})
     ant_df["Type"] = "Antonym"
     logger.info("Loaded %d antonyms", len(ant_df))
+
     all_rels = pd.concat([ant_df, syn_df], ignore_index=True)
     relation_tuples = []
+    seen_relations = set()
     some_not_exist = False
 
     for _, row in tqdm(all_rels.iterrows(), total=len(all_rels), desc="Processing relations"):
@@ -281,8 +327,13 @@ def __load_relations(word_id_map: dict[str, int]) -> list[WordRelation]:
                 some_not_exist = True
                 continue
 
-            type = RelationType.SYNONYM if row["Type"] == "Synonym" else RelationType.ANTONYM
-            relation_tuples.append(WordRelation(word_id_map[word], word_id_map[related_word], type))
+            relation_type = RelationType.SYNONYM if row["Type"] == "Synonym" else RelationType.ANTONYM
+            relation_key = (word_id_map[word], word_id_map[related_word], relation_type)
+            if relation_key in seen_relations:
+                continue
+
+            seen_relations.add(relation_key)
+            relation_tuples.append(WordRelation(*relation_key))
 
     if some_not_exist:
         logger.warning("Some relations were skipped because the word or related word was not found in the main dataset")
