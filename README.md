@@ -27,4 +27,6 @@ Examples of searches with examples and synonyms/antonyms:
 - "predecessor"
 
 ## AI Declaration
-The use of Generative AI has been kept to a minimum and only for trivial implementation such as frontend HTML/CSS templating/styling. Additionally it has been used as a reference tool to look up documentation and programming language subtleties. All non-trivial implementations and the overall design has been written by us.
+The use of Generative AI has been kept to a minimum and only for trivial implementations such as frontend HTML/CSS templating/styling. Additionally it has been used as a reference tool to look up documentation and programming language subtleties. All non-trivial implementations and the overall design has been written by us.
+
+A filled out version of UCPH's AI Declaration template can be found [here](ai_declaration.pdf)
