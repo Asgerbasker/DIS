@@ -6,7 +6,3 @@ class Config:
     POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "postgres")
     POSTGRES_DB = os.environ.get("POSTGRES_DB", "wordnet")
     POSTGRES_PORT = int(os.environ.get("POSTGRES_PORT", "8888"))
-    KAGGLE_DATASET = os.environ.get(
-        "KAGGLE_DATASET",
-        "dfydata/wordnet-dictionary-thesaurus-files-in-csv-format",
-    )
