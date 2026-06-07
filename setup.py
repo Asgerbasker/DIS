@@ -1,3 +1,4 @@
+from time import time
 from docker.errors import APIError, DockerException, NotFound
 from docker.models.containers import Container
 from flask import current_app
@@ -54,6 +55,7 @@ def __database_is_valid() -> bool:
         connection.close()
 
 
+    
 def start_postgres_container() -> Container:
     config = current_app.config
     container_name = config["CONTAINER_NAME"]
@@ -92,10 +94,16 @@ def start_postgres_container() -> Container:
             },
             ports={"5432/tcp": ("127.0.0.1", config["POSTGRES_PORT"])},
         )
-        logger.info("Started new container %s (id=%s) from image postgres:16", container_name, container.short_id)
-        return container
-    except (APIError, DockerException) as exc:
+        logger.info("Started new container %s (id=%s) from image postgres:16", container_name, container.short_id)        
+    except (APIError, DockerException) as exc:        
         raise RuntimeError(f"Failed to start container {container_name}") from exc
+    for attempt in range(10):
+        logger.info("Waiting for container %s to be healthy (attempt %d/10)", container_name, attempt + 1)
+        time.sleep(3)
+        container.reload()
+        if container.status == "running":
+            return container
+    raise RuntimeError(f"Container {container_name} did not become healthy in time")
 
 def create_db_schema() -> None:
     config = current_app.config
