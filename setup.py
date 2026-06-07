@@ -1,4 +1,4 @@
-from time import time
+import time
 from docker.errors import APIError, DockerException, NotFound
 from docker.models.containers import Container
 from flask import current_app
