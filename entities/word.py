@@ -17,12 +17,6 @@ class Word:
     examples: list["Example"] = field(default_factory=list)
     related_words: list["WordRelation"] = field(default_factory=list)
 
-    def add_example(self, example: "Example") -> None:
-        self.examples.append(example)
-
-    def add_related_word(self, related_word: "WordRelation") -> None:
-        self.related_words.append(related_word)
-
     @staticmethod
     def search_words(query: str, db_connection) -> list["Word"]:
         normalized = normalize(query)
